@@ -1,0 +1,22 @@
+{
+  "name": "ESPHomeIRHVACController",
+  "version": "1.0.0",
+  "description": "Tasmota-compatible IRHVAC controller for ESPHome",
+  "keywords": [
+    "esphome",
+    "irhvac",
+    "libretiny"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zain1144/ESPHome-IRHVAC-BK7231N.git"
+  },
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "*",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src"
+  }
+}
+
