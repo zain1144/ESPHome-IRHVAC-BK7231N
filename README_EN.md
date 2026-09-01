@@ -24,6 +24,7 @@ for the same state.
 - `ir-blaster-bk7231n.yaml`: complete ESPHome configuration.
 - `irhvac_controller.h`: JSON parsing, state management, IR transmission, and
   the HTTP endpoint.
+- `library.json`: lets ESPHome fetch the controller directly from GitHub.
 
 Modified library:
 
@@ -47,6 +48,10 @@ Configure the network and MQTT values for your environment, then run:
 esphome config ir-blaster-bk7231n.yaml
 esphome run ir-blaster-bk7231n.yaml
 ```
+
+You do not need to copy `irhvac_controller.h` manually. The `libraries`
+section fetches it from this repository, and `<irhvac_controller.h>` includes
+it in the generated build.
 
 The example pins LibreTiny to `1.12.1`, which is the version verified to boot
 and run reliably on the tested device.
