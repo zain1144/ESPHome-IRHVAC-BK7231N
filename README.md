@@ -1,5 +1,7 @@
 # ESPHome IRHVAC for BK7231N
 
+[English version](README_EN.md)
+
 فيرموير ESPHome لمرسل IR يعمل على شرائح Beken/LibreTiny ويستقبل أوامر
 `IRHVAC` بصيغة Tasmota عبر MQTT أو HTTP.
 
