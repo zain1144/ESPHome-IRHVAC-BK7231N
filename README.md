@@ -22,6 +22,7 @@
 
 - `ir-blaster-bk7231n.yaml`: إعداد ESPHome الكامل.
 - `irhvac_controller.h`: تحليل JSON، إدارة الحالة، الإرسال، ومسار HTTP.
+- `library.json`: يتيح لـ ESPHome جلب ملف المتحكم تلقائيًا من GitHub.
 
 المكتبة المعدلة:
 
@@ -45,6 +46,9 @@
 esphome config ir-blaster-bk7231n.yaml
 esphome run ir-blaster-bk7231n.yaml
 ```
+
+لا تحتاج إلى نسخ `irhvac_controller.h` يدويًا؛ يجلبه قسم `libraries` من
+هذا المستودع، وتضيفه الصيغة `<irhvac_controller.h>` إلى البناء.
 
 يثبت المثال LibreTiny على `1.12.1` لأنه الإصدار الذي تم التحقق من إقلاعه
 واستقراره على الجهاز المختبر.
