@@ -8,14 +8,16 @@ substitutions:
   mqtt_tele_result_topic: tele/ir-blaster/RESULT
   mqtt_lwt_topic: tele/ir-blaster/LWT
   ir_library_source: https://github.com/zain1144/IRremoteESP8266-ESPHome-LibreTiny.git#esphome-libretiny
+  ir_controller_source: https://github.com/zain1144/ESPHome-IRHVAC-BK7231N.git#main
 
 esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
   libraries:
     - IRremoteESP8266=${ir_library_source}
+    - ESPHomeIRHVACController=${ir_controller_source}
   includes:
-    - irhvac_controller.h
+    - <irhvac_controller.h>
   on_boot:
     priority: -100
     then:
