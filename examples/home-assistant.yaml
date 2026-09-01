@@ -1,0 +1,54 @@
+# Add this to configuration.yaml or split it into the matching HA packages.
+
+climate:
+  - platform: tasmota_irhvac
+    name: "Kelvinator AC"
+    command_topic: "cmnd/ir-blaster/irhvac"
+    state_topic: "tele/ir-blaster/RESULT"
+    state_topic_2: "stat/ir-blaster/RESULT"
+    availability_topic: "tele/ir-blaster/LWT"
+    vendor: "KELVINATOR"
+    hvac_model: "-1"
+    min_temp: 16
+    max_temp: 30
+    target_temp: 24
+    supported_modes:
+      - "cool"
+      - "heat"
+      - "dry"
+      - "fan_only"
+      - "auto"
+      - "off"
+    supported_fan_speeds:
+      - "auto"
+      - "min"
+      - "medium"
+      - "max"
+    supported_swing_list:
+      - "off"
+      - "vertical"
+
+rest_command:
+  ir_blaster_hvac_http:
+    url: "http://192.168.0.102/cm"
+    method: GET
+    params:
+      cmnd: 'IRHVAC {{ payload }}'
+
+script:
+  kelvinator_cool_24_http:
+    alias: Kelvinator Cool 24 via ESPHome HTTP
+    sequence:
+      - action: rest_command.ir_blaster_hvac_http
+        data:
+          payload: >-
+            {"Vendor":"KELVINATOR","Model":-1,"Command":"Control","Mode":"Cool","Power":"On","Celsius":"On","Temp":24,"FanSpeed":"Min","SwingV":"Auto","SwingH":"Off","Quiet":"Off","Turbo":"Off","Econo":"Off","Light":"On","Filter":"On","Clean":"Off","Beep":"Off","Sleep":-1,"iFeel":"Off","SensorTemp":null}
+
+  kelvinator_cool_24_mqtt:
+    alias: Kelvinator Cool 24 via ESPHome MQTT
+    sequence:
+      - action: mqtt.publish
+        data:
+          topic: cmnd/ir-blaster/IRHVAC
+          payload: >-
+            {"Vendor":"KELVINATOR","Model":-1,"Command":"Control","Mode":"Cool","Power":"On","Celsius":"On","Temp":24,"FanSpeed":"Min","SwingV":"Auto","SwingH":"Off","Quiet":"Off","Turbo":"Off","Econo":"Off","Light":"On","Filter":"On","Clean":"Off","Beep":"Off","Sleep":-1,"iFeel":"Off","SensorTemp":null}

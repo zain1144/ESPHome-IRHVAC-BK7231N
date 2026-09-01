@@ -1,0 +1,87 @@
+substitutions:
+  device_name: ir-blaster
+  friendly_name: IR Blaster
+  tx_pin: P7
+  mqtt_command_topic: cmnd/ir-blaster/IRHVAC
+  mqtt_command_topic_lower: cmnd/ir-blaster/irhvac
+  mqtt_result_topic: stat/ir-blaster/RESULT
+  mqtt_tele_result_topic: tele/ir-blaster/RESULT
+  mqtt_lwt_topic: tele/ir-blaster/LWT
+  ir_library_source: https://github.com/zain1144/IRremoteESP8266-ESPHome-LibreTiny.git#esphome-libretiny
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  libraries:
+    - IRremoteESP8266=${ir_library_source}
+  includes:
+    - irhvac_controller.h
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          esphome_irhvac::setup(id(ir_tx));
+
+bk72xx:
+  board: generic-bk7231n-qfn32-tuya
+  # v1.13.0 failed to return after OTA on the tested BK7231N device.
+  # Keep the last verified runtime until that LibreTiny regression is resolved.
+  framework:
+    version: 1.12.1
+    source: https://github.com/libretiny-eu/libretiny.git#v1.12.1
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+logger:
+
+api:
+
+ota:
+  - platform: esphome
+
+web_server:
+  port: 80
+
+mqtt:
+  id: mqtt_client
+  broker: !secret mqtt_broker
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  birth_message:
+    topic: ${mqtt_lwt_topic}
+    payload: Online
+    retain: true
+  will_message:
+    topic: ${mqtt_lwt_topic}
+    payload: Offline
+    retain: true
+  shutdown_message:
+    topic: ${mqtt_lwt_topic}
+    payload: Offline
+    retain: true
+  on_json_message:
+    - topic: ${mqtt_command_topic}
+      then:
+        - lambda: |-
+            auto result = esphome_irhvac::send_object(
+                x, "MQTT");
+            id(mqtt_client).publish(
+                "${mqtt_result_topic}", result.response_json, 0, false);
+            id(mqtt_client).publish(
+                "${mqtt_tele_result_topic}", result.response_json, 0, false);
+    - topic: ${mqtt_command_topic_lower}
+      then:
+        - lambda: |-
+            auto result = esphome_irhvac::send_object(
+                x, "MQTT");
+            id(mqtt_client).publish(
+                "${mqtt_result_topic}", result.response_json, 0, false);
+            id(mqtt_client).publish(
+                "${mqtt_tele_result_topic}", result.response_json, 0, false);
+
+remote_transmitter:
+  id: ir_tx
+  pin: ${tx_pin}
+  carrier_duty_percent: 50%
