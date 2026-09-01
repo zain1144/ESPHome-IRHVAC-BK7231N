@@ -51,6 +51,16 @@ esphome run ir-blaster-bk7231n.yaml
 The example pins LibreTiny to `1.12.1`, which is the version verified to boot
 and run reliably on the tested device.
 
+## Updating from the web interface
+
+The configuration enables the `web_server` OTA platform alongside ESPHome's
+native OTA platform. After the initial firmware installation, open the device
+page, find the `OTA Update` section, select `firmware.bin`, and click
+`Update`.
+
+Do not disconnect power while the firmware is uploading or the device is
+restarting.
+
 ## MQTT commands
 
 Command topic:
