@@ -97,7 +97,8 @@ static std::string state_json(const SendResult &result) {
 }
 
 static ReceiveResult receive_raw(
-    const esphome::remote_base::RawTimings &timings) {
+    const esphome::remote_base::RawTimings &timings,
+    const uint8_t tolerance = 55) {
   ReceiveResult result;
   const uint32_t now = esphome::millis();
 
@@ -153,7 +154,7 @@ static ReceiveResult receive_raw(
   rawbuf.push_back(0);  // Room for IRrecv::decode()'s trailing sentinel.
 
   decode_results decoded{};
-  decoder.setTolerance(25);
+  decoder.setTolerance(tolerance);
   if (!decoder.decodeRaw(&decoded, rawbuf.data(), rawlen)) return result;
 
   received_once = true;

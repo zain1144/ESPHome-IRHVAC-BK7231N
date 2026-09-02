@@ -203,6 +203,10 @@ The last successfully decoded HVAC state is also used as the base for later
 partial transmit commands. A 300 ms guard prevents the onboard receiver from
 publishing the device's own transmission as a newly received command.
 
+The IRC03 configuration uses a `55%` receive tolerance for both ESPHome and
+IRremoteESP8266. It can be adjusted with the `ir_receive_tolerance`
+substitution if a different receiver circuit needs tighter matching.
+
 The JSON shape and MQTT topic are designed for consumers that already process
 Tasmota `IrReceived` messages. Tasmota-only options such as raw-data
 compression (`SetOption58`) and `DataLSB` are not emitted.

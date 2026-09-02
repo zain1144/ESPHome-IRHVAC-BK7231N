@@ -3,6 +3,7 @@ substitutions:
   friendly_name: IR Blaster
   tx_pin: P7
   rx_pin: P8
+  ir_receive_tolerance: "55"
   mqtt_command_topic: cmnd/ir-blaster/IRHVAC
   mqtt_command_topic_lower: cmnd/ir-blaster/irhvac
   mqtt_result_topic: stat/ir-blaster/RESULT
@@ -98,14 +99,15 @@ remote_receiver:
     mode:
       input: true
       pullup: true
-  tolerance: 25%
+  tolerance: ${ir_receive_tolerance}%
   filter: 50us
   idle: 50ms
   buffer_size: 4kb
   on_raw:
     then:
       - lambda: |-
-          auto result = esphome_irhvac::receive_raw(x);
+          auto result = esphome_irhvac::receive_raw(
+              x, ${ir_receive_tolerance});
           if (result.publish) {
             id(mqtt_client).publish(
                 "${mqtt_tele_result_topic}", result.response_json, 0, false);
