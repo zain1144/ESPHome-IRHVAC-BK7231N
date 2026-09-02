@@ -171,16 +171,32 @@ static ReceiveResult receive_raw(
     decoder.setTolerance(retry_tolerance);
     if (decoder.decodeRaw(&retry, rawbuf.data(), rawlen) &&
         retry.decode_type != decode_type_t::UNKNOWN) {
-      const stdAc::state_t *previous =
-          received_state_valid && received_state.protocol == retry.decode_type
-              ? &received_state
-              : nullptr;
-      if (IRAcUtils::decodeToState(&retry, &recovered_state, previous)) {
-        decoded = retry;
-        recovered_hvac_state = true;
-        ESP_LOGD(TAG, "Recovered %s HVAC frame with %u%% tolerance",
-                 typeToString(decoded.decode_type).c_str(),
-                 static_cast<unsigned>(retry_tolerance));
+      // Hash decoding reports roughly one bit per mark/space pair. Require a
+      // recovered protocol to explain at least 75% of that capture so a short
+      // protocol matching only the prefix of a long HVAC frame is rejected.
+      const bool covers_capture =
+          retry.bits != 0 &&
+          static_cast<uint32_t>(retry.bits) * 4 >=
+              static_cast<uint32_t>(decoded.bits) * 3;
+      if (covers_capture) {
+        const stdAc::state_t *previous =
+            received_state_valid &&
+                    received_state.protocol == retry.decode_type
+                ? &received_state
+                : nullptr;
+        if (IRAcUtils::decodeToState(&retry, &recovered_state, previous)) {
+          decoded = retry;
+          recovered_hvac_state = true;
+          ESP_LOGD(TAG, "Recovered %s HVAC frame with %u%% tolerance",
+                   typeToString(decoded.decode_type).c_str(),
+                   static_cast<unsigned>(retry_tolerance));
+        }
+      } else {
+        ESP_LOGD(TAG,
+                 "Rejected short %s retry (%u bits for %u-bit raw capture)",
+                 typeToString(retry.decode_type).c_str(),
+                 static_cast<unsigned>(retry.bits),
+                 static_cast<unsigned>(decoded.bits));
       }
     }
     decoder.setTolerance(tolerance);

@@ -208,9 +208,11 @@ IRremoteESP8266. It can be adjusted with the `ir_receive_tolerance`
 substitution if a different receiver circuit needs tighter matching.
 If normal decoding reports an unknown capture, all enabled decoders are retried
 once at `65%`. The retry is accepted only when it produces a supported HVAC
-state, so the recovery path is not tied to one A/C vendor. The duplicate guard
-begins after decoding so a queued fragment is not published immediately after
-a valid complete frame.
+state whose bit count explains at least 75% of the raw capture. This rejects a
+short protocol that happens to match only the beginning of a long frame, while
+keeping recovery independent of the A/C vendor. The duplicate guard begins
+after decoding so a queued fragment is not published immediately after a valid
+complete frame.
 
 The JSON shape and MQTT topic are designed for consumers that already process
 Tasmota `IrReceived` messages. Tasmota-only options such as raw-data
