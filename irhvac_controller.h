@@ -1,12 +1,18 @@
 #pragma once
 
 #include <IRac.h>
+#include <IRrecv.h>
 #include <IRutils.h>
 #include <irremote_esphome_bridge.h>
 
+#include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <string>
+#include <vector>
 
 #include "esphome/components/json/json_util.h"
+#include "esphome/components/remote_base/remote_base.h"
 #include "esphome/components/remote_transmitter/remote_transmitter.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/log.h"
@@ -19,13 +25,30 @@ namespace esphome_irhvac {
 static const char *const TAG = "irhvac";
 static esphome::remote_transmitter::RemoteTransmitterComponent *transmitter = nullptr;
 static IRac ac(0);
+static IRrecv decoder(0, 8, 50, false);
 static bool busy = false;
 static bool http_handler_registered = false;
+static bool transmitted_once = false;
+static uint32_t last_transmit_ms = 0;
+static bool received_once = false;
+static uint32_t last_receive_ms = 0;
+static bool received_state_valid = false;
+static stdAc::state_t received_state;
+
+static const uint32_t RECEIVE_DUPLICATE_WINDOW_MS = 50;
+static const uint32_t RECEIVE_ECHO_WINDOW_MS = 300;
 
 struct SendResult {
   bool success{false};
   size_t timing_count{0};
   std::string error;
+  std::string response_json;
+};
+
+struct ReceiveResult {
+  bool publish{false};
+  bool decoded{false};
+  bool hvac{false};
   std::string response_json;
 };
 
@@ -38,14 +61,7 @@ static bool read_bool(JsonObjectConst command, const char *key, bool old_value) 
   return value.as<int>() != 0;
 }
 
-static std::string state_json(const SendResult &result) {
-  const stdAc::state_t &state = ac.next;
-  return esphome::json::build_json([&](JsonObject root) {
-    root["Status"] = result.success ? "SUCCESS" : "FAILED";
-    root["Timings"] = static_cast<uint32_t>(result.timing_count);
-    if (!result.error.empty()) root["Error"] = result.error;
-
-    JsonObject command = root["IRHVAC"].to<JsonObject>();
+static void write_state(JsonObject command, const stdAc::state_t &state) {
     command["Vendor"] = typeToString(state.protocol).c_str();
     command["Model"] = state.model;
     command["Command"] = IRac::commandTypeToString(state.command).c_str();
@@ -69,7 +85,113 @@ static std::string state_json(const SendResult &result) {
       command["SensorTemp"] = nullptr;
     else
       command["SensorTemp"] = state.sensorTemperature;
+}
+
+static std::string state_json(const SendResult &result) {
+  return esphome::json::build_json([&](JsonObject root) {
+    root["Status"] = result.success ? "SUCCESS" : "FAILED";
+    root["Timings"] = static_cast<uint32_t>(result.timing_count);
+    if (!result.error.empty()) root["Error"] = result.error;
+    write_state(root["IRHVAC"].to<JsonObject>(), ac.next);
   });
+}
+
+static ReceiveResult receive_raw(
+    const esphome::remote_base::RawTimings &timings) {
+  ReceiveResult result;
+  const uint32_t now = esphome::millis();
+
+  if (busy ||
+      (transmitted_once &&
+       static_cast<uint32_t>(now - last_transmit_ms) < RECEIVE_ECHO_WINDOW_MS)) {
+    ESP_LOGD(TAG, "Ignoring receiver echo from the local transmitter");
+    return result;
+  }
+  if (received_once &&
+      static_cast<uint32_t>(now - last_receive_ms) <
+          RECEIVE_DUPLICATE_WINDOW_MS) {
+    ESP_LOGD(TAG, "Ignoring duplicate IR receive event");
+    return result;
+  }
+
+  // IRremoteESP8266 expects unsigned durations in kRawTick units, with a
+  // leading gap at index 0. ESPHome supplies signed microsecond timings where
+  // marks are positive and spaces are negative.
+  std::vector<uint16_t> rawbuf;
+  rawbuf.reserve(timings.size() + 2);
+  rawbuf.push_back(1);
+
+  bool started = false;
+  bool expect_mark = true;
+  for (const int32_t timing : timings) {
+    if (!started && timing <= 0) continue;
+    if (timing == 0) continue;
+
+    const bool is_mark = timing > 0;
+    if (is_mark != expect_mark) {
+      ESP_LOGW(TAG, "Invalid IR mark/space sequence; check receiver inversion");
+      return result;
+    }
+    started = true;
+
+    const uint32_t duration = timing > 0
+                                  ? static_cast<uint32_t>(timing)
+                                  : static_cast<uint32_t>(-static_cast<int64_t>(timing));
+    const uint32_t ticks = std::max<uint32_t>(
+        1, (duration + (kRawTick / 2)) / kRawTick);
+    rawbuf.push_back(static_cast<uint16_t>(std::min<uint32_t>(
+        ticks, std::numeric_limits<uint16_t>::max())));
+    expect_mark = !expect_mark;
+  }
+
+  if (!started || rawbuf.size() <= kStartOffset + 2 ||
+      rawbuf.size() >= std::numeric_limits<uint16_t>::max()) {
+    return result;
+  }
+
+  const uint16_t rawlen = static_cast<uint16_t>(rawbuf.size());
+  rawbuf.push_back(0);  // Room for IRrecv::decode()'s trailing sentinel.
+
+  decode_results decoded{};
+  decoder.setTolerance(25);
+  if (!decoder.decodeRaw(&decoded, rawbuf.data(), rawlen)) return result;
+
+  received_once = true;
+  last_receive_ms = now;
+  result.decoded = true;
+
+  stdAc::state_t state;
+  const stdAc::state_t *previous =
+      received_state_valid && received_state.protocol == decoded.decode_type
+          ? &received_state
+          : nullptr;
+  result.hvac = IRAcUtils::decodeToState(&decoded, &state, previous);
+  if (result.hvac) {
+    received_state = state;
+    received_state_valid = true;
+    // Keep partial future IRHVAC commands aligned with the physical remote.
+    ac.next = state;
+  }
+
+  const std::string protocol(typeToString(decoded.decode_type).c_str());
+  const std::string value(resultToHexidecimal(&decoded).c_str());
+  result.response_json = esphome::json::build_json([&](JsonObject root) {
+    JsonObject received = root["IrReceived"].to<JsonObject>();
+    received["Protocol"] = protocol;
+    received["Bits"] = decoded.bits;
+    if (decoded.decode_type == decode_type_t::UNKNOWN)
+      received["Hash"] = value;
+    else
+      received["Data"] = value;
+    received["Repeat"] = decoded.repeat ? 1 : 0;
+    if (result.hvac)
+      write_state(received["IRHVAC"].to<JsonObject>(), state);
+  });
+  result.publish = true;
+
+  ESP_LOGI(TAG, "Received IR: protocol=%s bits=%u hvac=%s", protocol.c_str(),
+           static_cast<unsigned>(decoded.bits), result.hvac ? "yes" : "no");
+  return result;
 }
 
 static SendResult send_object(JsonObjectConst input, const char *source) {
@@ -150,6 +272,8 @@ static SendResult send_object(JsonObjectConst input, const char *source) {
   result.timing_count = transmit_data->get_data().size();
   if (result.success && result.timing_count != 0) {
     transmit.perform();
+    transmitted_once = true;
+    last_transmit_ms = esphome::millis();
   } else {
     result.success = false;
     result.error = "IRac rejected the requested state";

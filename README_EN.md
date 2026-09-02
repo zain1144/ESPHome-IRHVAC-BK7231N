@@ -2,8 +2,9 @@
 
 [النسخة العربية](README.md)
 
-ESPHome firmware for an IR transmitter running on Beken/LibreTiny chips. It
-accepts Tasmota-style `IRHVAC` commands over MQTT and HTTP.
+ESPHome firmware for an IR transmitter and receiver running on
+Beken/LibreTiny chips. It accepts Tasmota-style `IRHVAC` commands over MQTT
+and HTTP, and publishes decoded IR frames in a Tasmota-compatible structure.
 
 The project supports the HVAC protocols provided by IRremoteESP8266. The
 protocol, model, and requested features are selected in the JSON payload, so
@@ -15,6 +16,10 @@ protocols.
 1. IRremoteESP8266 converts the common `IRHVAC` state into protocol timings.
 2. The ESPHome bridge captures the generated `mark/space` timings.
 3. ESPHome's `remote_transmitter` sends the physical IR signal on LibreTiny.
+4. ESPHome's `remote_receiver` captures incoming frames and passes them to the
+   full IRremoteESP8266 decoder.
+5. Recognized A/C frames are converted to the common HVAC state and published
+   as `IrReceived.IRHVAC` over MQTT.
 
 MQTT and HTTP use the same sending path and therefore generate the same signal
 for the same state.
@@ -34,8 +39,8 @@ Modified library:
 
 - A LibreTiny-compatible BK7231N board.
 - A compatible ESPHome release.
-- An IR LED with a suitable driver circuit.
-- The default IR output pin in the example is `P7`.
+- An IR LED with a suitable driver circuit and an IR receiver module.
+- On the Tuya Generic IRC03 example, IR transmit is `P7` and receive is `P8`.
 
 Do not connect a high-current IR LED directly to the MCU pin. Use the board's
 existing driver circuit or a suitable transistor and resistors.
@@ -146,6 +151,62 @@ tele/ir-blaster/LWT
 
 with an `Online` or `Offline` payload.
 
+## Receiving remote-control commands
+
+The complete YAML enables the onboard receiver on `P8`. Each completed frame
+is captured by ESPHome, decoded by IRremoteESP8266, and published to:
+
+```text
+tele/ir-blaster/RESULT
+```
+
+For a supported HVAC frame, the payload follows Tasmota's receive structure:
+
+```json
+{
+  "IrReceived": {
+    "Protocol": "KELVINATOR",
+    "Bits": 128,
+    "Data": "0x10900450000000001090045000000000",
+    "Repeat": 0,
+    "IRHVAC": {
+      "Vendor": "KELVINATOR",
+      "Model": -1,
+      "Command": "Control",
+      "Mode": "Cool",
+      "Power": "On",
+      "Celsius": "On",
+      "Temp": 25,
+      "FanSpeed": "Min",
+      "SwingV": "Off",
+      "SwingH": "Off",
+      "Quiet": "Off",
+      "Turbo": "Off",
+      "Econo": "Off",
+      "Light": "Off",
+      "Filter": "Off",
+      "Clean": "On",
+      "Beep": "Off",
+      "Sleep": -1,
+      "iFeel": "Off",
+      "SensorTemp": null
+    }
+  }
+}
+```
+
+The `Data` value above is only an example. Frames recognized as a non-HVAC
+protocol are still published with protocol/data information but without the
+`IRHVAC` object. Unrecognized frames use `Hash` instead of `Data`.
+
+The last successfully decoded HVAC state is also used as the base for later
+partial transmit commands. A 300 ms guard prevents the onboard receiver from
+publishing the device's own transmission as a newly received command.
+
+The JSON shape and MQTT topic are designed for consumers that already process
+Tasmota `IrReceived` messages. Tasmota-only options such as raw-data
+compression (`SetOption58`) and `DataLSB` are not emitted.
+
 ## Tasmota-compatible HTTP commands
 
 Endpoint:
@@ -230,6 +291,10 @@ credentials in a public URL.
   direction.
 - Verify the signal with a nearby IR receiver before aiming the transmitter at
   the target device.
+- If reception logs report an invalid mark/space sequence, confirm that the
+  receive pin is `P8` and remains configured with `inverted: true`.
+- A decoded protocol without `IRHVAC` means that IRremoteESP8266 recognized the
+  frame but cannot map it to the common A/C state.
 - Run `esphome logs ir-blaster-bk7231n.yaml` to view `irhvac` messages.
 
 ## Attribution and license

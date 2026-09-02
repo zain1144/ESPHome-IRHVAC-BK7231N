@@ -2,6 +2,7 @@ substitutions:
   device_name: ir-blaster
   friendly_name: IR Blaster
   tx_pin: P7
+  rx_pin: P8
   mqtt_command_topic: cmnd/ir-blaster/IRHVAC
   mqtt_command_topic_lower: cmnd/ir-blaster/irhvac
   mqtt_result_topic: stat/ir-blaster/RESULT
@@ -88,4 +89,25 @@ remote_transmitter:
   id: ir_tx
   pin: ${tx_pin}
   carrier_duty_percent: 50%
+
+remote_receiver:
+  id: ir_rx
+  pin:
+    number: ${rx_pin}
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+  tolerance: 25%
+  filter: 50us
+  idle: 50ms
+  buffer_size: 4kb
+  on_raw:
+    then:
+      - lambda: |-
+          auto result = esphome_irhvac::receive_raw(x);
+          if (result.publish) {
+            id(mqtt_client).publish(
+                "${mqtt_tele_result_topic}", result.response_json, 0, false);
+          }
 
