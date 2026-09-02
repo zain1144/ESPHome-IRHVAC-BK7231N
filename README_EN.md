@@ -199,6 +199,15 @@ The `Data` value above is only an example. Frames recognized as a non-HVAC
 protocol are still published with protocol/data information but without the
 `IRHVAC` object. Unrecognized frames use `Hash` instead of `Data`.
 
+Successfully decoded HVAC frames are also printed in the device log as a full
+command object:
+
+```text
+[I][irhvac]: Received IRHVAC: {"Vendor":"KELVINATOR","Model":-1,"Command":"Control",...}
+```
+
+Unknown and non-HVAC frames retain the shorter protocol/bit-count log line.
+
 The last successfully decoded HVAC state is also used as the base for later
 partial transmit commands. A 300 ms guard prevents the onboard receiver from
 publishing the device's own transmission as a newly received command.

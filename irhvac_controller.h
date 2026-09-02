@@ -239,8 +239,16 @@ static ReceiveResult receive_raw(
   });
   result.publish = true;
 
-  ESP_LOGI(TAG, "Received IR: protocol=%s bits=%u hvac=%s", protocol.c_str(),
-           static_cast<unsigned>(decoded.bits), result.hvac ? "yes" : "no");
+  if (result.hvac) {
+    const std::string hvac_json =
+        esphome::json::build_json([&](JsonObject root) {
+          write_state(root, state);
+        });
+    ESP_LOGI(TAG, "Received IRHVAC: %s", hvac_json.c_str());
+  } else {
+    ESP_LOGI(TAG, "Received IR: protocol=%s bits=%u hvac=no",
+             protocol.c_str(), static_cast<unsigned>(decoded.bits));
+  }
   // Start the duplicate guard after the potentially expensive decode. This
   // also suppresses a queued 64-bit Gree half-frame following Kelvinator.
   last_receive_ms = esphome::millis();
