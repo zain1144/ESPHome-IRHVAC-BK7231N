@@ -206,6 +206,9 @@ publishing the device's own transmission as a newly received command.
 The IRC03 configuration uses a `55%` receive tolerance for both ESPHome and
 IRremoteESP8266. It can be adjusted with the `ir_receive_tolerance`
 substitution if a different receiver circuit needs tighter matching.
+The `ir_receive_idle` substitution defaults to `60ms`, allowing long internal
+HVAC gaps to remain in one capture without treating a genuine 64-bit frame as
+invalid; it only delays delivery until the line has remained idle for 60ms.
 If normal decoding reports an unknown capture, all enabled decoders are retried
 once at `65%`. The retry is accepted only when it produces a supported HVAC
 state whose bit count explains at least 75% of the raw capture. This rejects a

@@ -4,6 +4,7 @@ substitutions:
   tx_pin: P7
   rx_pin: P8
   ir_receive_tolerance: "55"
+  ir_receive_idle: 60ms
   mqtt_command_topic: cmnd/ir-blaster/IRHVAC
   mqtt_command_topic_lower: cmnd/ir-blaster/irhvac
   mqtt_result_topic: stat/ir-blaster/RESULT
@@ -101,7 +102,7 @@ remote_receiver:
       pullup: true
   tolerance: ${ir_receive_tolerance}%
   filter: 50us
-  idle: 50ms
+  idle: ${ir_receive_idle}
   buffer_size: 4kb
   on_raw:
     then:
