@@ -35,6 +35,49 @@ Modified library:
 
 <https://github.com/zain1144/IRremoteESP8266-ESPHome-LibreTiny>
 
+## What changed in the library?
+
+The compatibility branch is based on the official `IRremoteESP8266 2.9.0`
+release. Commit `04b20e7` is the revision tested here. No A/C protocol encoder
+or decoder, including Gree and Kelvinator, was changed; `IRac` and the protocol
+`ir_*.cpp` files remain upstream code. The difference from `v2.9.0` is limited
+to five source files (167 insertions and two deletions):
+
+- Optional callbacks in `IRsend.h` and `IRsend.cpp` hand mark/space timings,
+  carrier frequency, and duty cycle to ESPHome. Without installed callbacks,
+  the original upstream transmit path remains unchanged.
+- `irremote_esphome_bridge.h` converts the protocol-generated envelope to
+  `RemoteTransmitData`; ESPHome's `remote_transmitter` then performs the
+  physical transmission on LibreTiny.
+- `IRrecv::decodeRaw()` lets the controller pass a frame captured by
+  `remote_receiver` through the complete IRremoteESP8266 decoder.
+- `#if defined(LIBRETINY)` guards disable the native capture backend, which is
+  written for ESP8266/ESP32. On BK7231N, ESPHome owns the receive GPIO while
+  IRremoteESP8266 still identifies the protocol and converts it to HVAC state.
+
+The same branch also serves
+[`ESPHome-IRHVAC-ESP`](https://github.com/zain1144/ESPHome-IRHVAC-ESP): the
+transmit changes are generic, while `decodeRaw()` and the backend guards are
+specifically required for LibreTiny reception.
+
+### Pinning and updates
+
+The YAML tracks `#esphome-libretiny` by default. PlatformIO caches Git
+libraries and does not fetch the latest commit on every compile. After that
+branch is updated, use **Clean Build Files** in ESPHome and build again.
+
+For a reproducible build, pin the exact library revision tested on hardware:
+
+```yaml
+ir_library_source: https://github.com/zain1144/IRremoteESP8266-ESPHome-LibreTiny.git#04b20e7
+```
+
+The official IRremoteESP8266 URL cannot currently replace this fork unchanged:
+upstream does not contain the ESPHome bridge, `decodeRaw()`, or the LibreTiny
+capture guards. When a newer upstream release is available, merge it into this
+branch first, then retest transmission and reception on hardware before
+adopting it.
+
 ## Requirements
 
 - A LibreTiny-compatible BK7231N board.

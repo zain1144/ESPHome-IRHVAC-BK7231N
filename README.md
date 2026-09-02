@@ -33,6 +33,48 @@
 
 <https://github.com/zain1144/IRremoteESP8266-ESPHome-LibreTiny>
 
+## ما الذي عُدّل في المكتبة؟
+
+الفرع المستخدم مبني على الإصدار الرسمي `IRremoteESP8266 2.9.0`. النسخة
+المختبرة هنا هي commit ‏`04b20e7`. لم تُغير مرمّزات أو مفككات بروتوكولات
+المكيفات مثل Gree وKelvinator؛ بقي `IRac` وجميع ملفات `ir_*.cpp` الخاصة
+بالبروتوكولات من upstream. الفرق عن `v2.9.0` محصور في خمسة ملفات مصدر
+(`167` سطرًا مضافًا وسطرين محذوفين):
+
+- أضيفت callbacks اختيارية إلى `IRsend.h` و`IRsend.cpp` لتسليم توقيتات
+  `mark/space` وتردد الحامل وduty cycle إلى ESPHome. إذا لم تُثبت callbacks
+  يبقى مسار الإرسال الأصلي للمكتبة كما هو.
+- أضيف `irremote_esphome_bridge.h` لتحويل التوقيتات التي أنشأها البروتوكول
+  إلى `RemoteTransmitData`، ثم ينفذ `remote_transmitter` الإرسال الفعلي على
+  LibreTiny.
+- أضيف `IRrecv::decodeRaw()` لكي يمرر المتحكم إطارًا التقطه
+  `remote_receiver` إلى مفككات IRremoteESP8266 الكاملة.
+- تحجب حواجز `#if defined(LIBRETINY)` backend الالتقاط الأصلي المكتوب
+  لـESP8266/ESP32 فقط. على BK7231N يملك ESPHome رجل الاستقبال، بينما تظل
+  المكتبة مسؤولة عن معرفة البروتوكول وتحويله إلى حالة HVAC.
+
+نفس الفرع يخدم أيضًا مشروع
+[`ESPHome-IRHVAC-ESP`](https://github.com/zain1144/ESPHome-IRHVAC-ESP): تعديلات
+الإرسال عامة، أما `decodeRaw()` وحواجز backend فهي اللازمة لمسار استقبال
+LibreTiny تحديدًا.
+
+### التثبيت والتحديث
+
+يتابع YAML افتراضيًا الفرع `#esphome-libretiny`. لا يجلب PlatformIO آخر
+commit لمكتبة Git تلقائيًا في كل compile لأنه يحتفظ بنسخة cache. بعد تحديث
+الفرع استخدم **Clean Build Files** من واجهة ESPHome ثم أعد البناء.
+
+لنسخة قابلة للتكرار يمكن تثبيت المكتبة التي اختُبرت فعليًا:
+
+```yaml
+ir_library_source: https://github.com/zain1144/IRremoteESP8266-ESPHome-LibreTiny.git#04b20e7
+```
+
+لا يمكن استبدالها حاليًا برابط `IRremoteESP8266` الرسمي من دون تعديل؛ النسخة
+الرسمية لا تحتوي جسر ESPHome ولا `decodeRaw()` ولا حواجز LibreTiny. عند صدور
+إصدار upstream أحدث، يُدمج داخل هذا الفرع أولًا، ثم يعاد اختبار الإرسال وفك
+الاستقبال على الجهاز قبل اعتماده.
+
 ## المتطلبات
 
 - لوحة BK7231N متوافقة مع LibreTiny.
