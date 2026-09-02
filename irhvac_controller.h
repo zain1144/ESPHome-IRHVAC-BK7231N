@@ -37,6 +37,12 @@ static stdAc::state_t received_state;
 
 static const uint32_t RECEIVE_DUPLICATE_WINDOW_MS = 50;
 static const uint32_t RECEIVE_ECHO_WINDOW_MS = 300;
+// A complete Kelvinator capture normally contains about 280 raw timing
+// entries. Keep the range narrow so the fast path and relaxed retry cannot
+// misclassify unrelated protocols of a different size.
+static const uint16_t KELVINATOR_RAWLEN_MIN = 270;
+static const uint16_t KELVINATOR_RAWLEN_MAX = 290;
+static const uint8_t KELVINATOR_RETRY_TOLERANCE_ADD = 10;
 
 struct SendResult {
   bool success{false};
@@ -155,10 +161,51 @@ static ReceiveResult receive_raw(
 
   decode_results decoded{};
   decoder.setTolerance(tolerance);
-  if (!decoder.decodeRaw(&decoded, rawbuf.data(), rawlen)) return result;
+  bool decode_succeeded = false;
+
+#if DECODE_KELVINATOR
+  const bool kelvinator_sized =
+      rawlen >= KELVINATOR_RAWLEN_MIN && rawlen <= KELVINATOR_RAWLEN_MAX;
+  if (kelvinator_sized) {
+    // Kelvinator is long and otherwise reaches the decoder only after many
+    // unrelated protocols have been tried. A strict checksum-protected fast
+    // path reduces main-loop blocking on the BK7231N.
+    decoded.rawbuf = rawbuf.data();
+    decoded.rawlen = rawlen;
+    decoded.overflow = false;
+    decode_succeeded = decoder.decodeKelvinator(&decoded);
+  }
+#endif
+
+  if (!decode_succeeded) {
+    decoded = decode_results{};
+    decode_succeeded = decoder.decodeRaw(&decoded, rawbuf.data(), rawlen);
+  }
+  if (!decode_succeeded) return result;
+
+#if DECODE_KELVINATOR
+  if (decoded.decode_type == decode_type_t::UNKNOWN && kelvinator_sized) {
+    // Some IRC03 receiver modules occasionally distort a single duration.
+    // Retry only the expected long Kelvinator shape with a slightly wider
+    // tolerance. Strict footer and checksum validation remain enabled.
+    decode_results retry{};
+    retry.rawbuf = rawbuf.data();
+    retry.rawlen = rawlen;
+    retry.overflow = false;
+    const uint8_t retry_tolerance = static_cast<uint8_t>(std::min<uint16_t>(
+        100, static_cast<uint16_t>(tolerance) +
+                 KELVINATOR_RETRY_TOLERANCE_ADD));
+    decoder.setTolerance(retry_tolerance);
+    if (decoder.decodeKelvinator(&retry)) {
+      decoded = retry;
+      ESP_LOGD(TAG, "Recovered Kelvinator frame with %u%% tolerance",
+               static_cast<unsigned>(retry_tolerance));
+    }
+    decoder.setTolerance(tolerance);
+  }
+#endif
 
   received_once = true;
-  last_receive_ms = now;
   result.decoded = true;
 
   stdAc::state_t state;
@@ -192,6 +239,9 @@ static ReceiveResult receive_raw(
 
   ESP_LOGI(TAG, "Received IR: protocol=%s bits=%u hvac=%s", protocol.c_str(),
            static_cast<unsigned>(decoded.bits), result.hvac ? "yes" : "no");
+  // Start the duplicate guard after the potentially expensive decode. This
+  // also suppresses a queued 64-bit Gree half-frame following Kelvinator.
+  last_receive_ms = esphome::millis();
   return result;
 }
 

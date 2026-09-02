@@ -206,6 +206,11 @@ publishing the device's own transmission as a newly received command.
 The IRC03 configuration uses a `55%` receive tolerance for both ESPHome and
 IRremoteESP8266. It can be adjusted with the `ir_receive_tolerance`
 substitution if a different receiver circuit needs tighter matching.
+Complete Kelvinator-sized captures are checked early with strict footer and
+checksum validation. If normal decoding reports such a capture as unknown,
+only Kelvinator is retried at `65%`; other protocols remain at the configured
+tolerance. The duplicate guard begins after decoding so a queued Gree-like
+half-frame is not published after a valid Kelvinator frame.
 
 The JSON shape and MQTT topic are designed for consumers that already process
 Tasmota `IrReceived` messages. Tasmota-only options such as raw-data
