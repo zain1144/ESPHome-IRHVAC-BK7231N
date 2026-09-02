@@ -37,12 +37,7 @@ static stdAc::state_t received_state;
 
 static const uint32_t RECEIVE_DUPLICATE_WINDOW_MS = 50;
 static const uint32_t RECEIVE_ECHO_WINDOW_MS = 300;
-// A complete Kelvinator capture normally contains about 280 raw timing
-// entries. Keep the range narrow so the fast path and relaxed retry cannot
-// misclassify unrelated protocols of a different size.
-static const uint16_t KELVINATOR_RAWLEN_MIN = 270;
-static const uint16_t KELVINATOR_RAWLEN_MAX = 290;
-static const uint8_t KELVINATOR_RETRY_TOLERANCE_ADD = 10;
+static const uint8_t HVAC_RETRY_TOLERANCE_ADD = 10;
 
 struct SendResult {
   bool success{false};
@@ -161,59 +156,50 @@ static ReceiveResult receive_raw(
 
   decode_results decoded{};
   decoder.setTolerance(tolerance);
-  bool decode_succeeded = false;
+  if (!decoder.decodeRaw(&decoded, rawbuf.data(), rawlen)) return result;
 
-#if DECODE_KELVINATOR
-  const bool kelvinator_sized =
-      rawlen >= KELVINATOR_RAWLEN_MIN && rawlen <= KELVINATOR_RAWLEN_MAX;
-  if (kelvinator_sized) {
-    // Kelvinator is long and otherwise reaches the decoder only after many
-    // unrelated protocols have been tried. A strict checksum-protected fast
-    // path reduces main-loop blocking on the BK7231N.
-    decoded.rawbuf = rawbuf.data();
-    decoded.rawlen = rawlen;
-    decoded.overflow = false;
-    decode_succeeded = decoder.decodeKelvinator(&decoded);
-  }
-#endif
-
-  if (!decode_succeeded) {
-    decoded = decode_results{};
-    decode_succeeded = decoder.decodeRaw(&decoded, rawbuf.data(), rawlen);
-  }
-  if (!decode_succeeded) return result;
-
-#if DECODE_KELVINATOR
-  if (decoded.decode_type == decode_type_t::UNKNOWN && kelvinator_sized) {
-    // Some IRC03 receiver modules occasionally distort a single duration.
-    // Retry only the expected long Kelvinator shape with a slightly wider
-    // tolerance. Strict footer and checksum validation remain enabled.
+  bool recovered_hvac_state = false;
+  stdAc::state_t recovered_state;
+  if (decoded.decode_type == decode_type_t::UNKNOWN) {
+    // Retry all enabled decoders with a slightly wider tolerance, but accept
+    // the retry only when it produces a supported HVAC state. This remains
+    // vendor-neutral and avoids promoting a weak non-HVAC match.
     decode_results retry{};
-    retry.rawbuf = rawbuf.data();
-    retry.rawlen = rawlen;
-    retry.overflow = false;
     const uint8_t retry_tolerance = static_cast<uint8_t>(std::min<uint16_t>(
         100, static_cast<uint16_t>(tolerance) +
-                 KELVINATOR_RETRY_TOLERANCE_ADD));
+                 HVAC_RETRY_TOLERANCE_ADD));
     decoder.setTolerance(retry_tolerance);
-    if (decoder.decodeKelvinator(&retry)) {
-      decoded = retry;
-      ESP_LOGD(TAG, "Recovered Kelvinator frame with %u%% tolerance",
-               static_cast<unsigned>(retry_tolerance));
+    if (decoder.decodeRaw(&retry, rawbuf.data(), rawlen) &&
+        retry.decode_type != decode_type_t::UNKNOWN) {
+      const stdAc::state_t *previous =
+          received_state_valid && received_state.protocol == retry.decode_type
+              ? &received_state
+              : nullptr;
+      if (IRAcUtils::decodeToState(&retry, &recovered_state, previous)) {
+        decoded = retry;
+        recovered_hvac_state = true;
+        ESP_LOGD(TAG, "Recovered %s HVAC frame with %u%% tolerance",
+                 typeToString(decoded.decode_type).c_str(),
+                 static_cast<unsigned>(retry_tolerance));
+      }
     }
     decoder.setTolerance(tolerance);
   }
-#endif
 
   received_once = true;
   result.decoded = true;
 
   stdAc::state_t state;
-  const stdAc::state_t *previous =
-      received_state_valid && received_state.protocol == decoded.decode_type
-          ? &received_state
-          : nullptr;
-  result.hvac = IRAcUtils::decodeToState(&decoded, &state, previous);
+  if (recovered_hvac_state) {
+    state = recovered_state;
+    result.hvac = true;
+  } else {
+    const stdAc::state_t *previous =
+        received_state_valid && received_state.protocol == decoded.decode_type
+            ? &received_state
+            : nullptr;
+    result.hvac = IRAcUtils::decodeToState(&decoded, &state, previous);
+  }
   if (result.hvac) {
     received_state = state;
     received_state_valid = true;
